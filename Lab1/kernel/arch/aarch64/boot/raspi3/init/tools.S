@@ -70,6 +70,9 @@
 BEGIN_FUNC(arm64_elX_to_el1)
 	/* LAB 1 TODO 1 BEGIN */
 	/* BLANK BEGIN */
+
+    mrs x9, CurrentEL // 0xc -> 0b1100 EL, bits [3:2]
+
 	/* BLANK END */
 	/* LAB 1 TODO 1 END */
 
@@ -89,6 +92,13 @@ BEGIN_FUNC(arm64_elX_to_el1)
 	// Set the return address and exception level.
 	/* LAB 1 TODO 2 BEGIN */
 	/* BLANK BEGIN */
+
+    adr x9, .Ltarget
+    msr elr_el3, x9 // elr_el3 <- lr
+
+    mov x9, SPSR_ELX_DAIF | SPSR_ELX_EL1H
+    msr spsr_el3, x9 // spsr_el3 <- x9
+
 	/* BLANK END */
 	/* LAB 1 TODO 2 END */
 
@@ -144,7 +154,7 @@ END_FUNC(arm64_elX_to_el1)
 
 // See https://developer.arm.com/documentation/den0024/a/Caches/Cache-maintenance
 BEGIN_FUNC(invalidate_cache_all)
-	mrs     x0, clidr_el1
+    mrs     x0, clidr_el1
 	and     w3, w0, #0x07000000     // get 2x level of coherence
 	lsr     w3, w3, #23
 	cbz     w3, .Lfinished_inv_cache
@@ -263,12 +273,17 @@ BEGIN_FUNC(el1_mmu_activate)
 	msr     ttbr1_el1, x8
 	isb
 
-	mrs     x8, sctlr_el1
+	mrs     x8, sctlr_el1 // x8 <- sctlr_el1
+
 	/* Enable MMU */
 	/* LAB 1 TODO 4 BEGIN */
 	/* BLANK BEGIN */
+
+    orr     x8, x8, #SCTLR_EL1_M // set M bit 1
+
 	/* BLANK END */
 	/* LAB 1 TODO 4 END */
+
 	/* Disable alignment checking */
 	bic     x8, x8, #SCTLR_EL1_A
 	bic     x8, x8, #SCTLR_EL1_SA0

@@ -87,10 +87,10 @@ void init_c(void)
 
 	/* Initialize Kernel Page Table. */
 	uart_send_string("[BOOT] Install kernel page table\r\n");
-	init_kernel_pt();
+	init_kernel_pt(); // 配置启动页表
 
 	/* Enable MMU. */
-	el1_mmu_activate();
+	el1_mmu_activate(); // ./tools.S, 启用 MMU
 	uart_send_string("[BOOT] Enable el1 MMU\r\n");
 
 	/* Call Kernel Main. */
