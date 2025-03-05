@@ -21,19 +21,22 @@
  */
 #define SLAB_MIN_ORDER (5)
 #define SLAB_MAX_ORDER (11)
+// 表示SLab分配器可以操作的内存块大小，从2^5到2^11字节
 
 /* The size of one slab is 128K. */
 #define SIZE_OF_ONE_SLAB (128*1024)
+// 表示每个slab的大小，在Chcore中是128KB
 
 /* slab_header resides in the beginning of each slab (i.e., occupies the first slot). */
 struct slab_header {
         /* The list of free slots, which can be converted to struct slab_slot_list. */
-        void *free_list_head;
+        void *free_list_head; // 内部空闲slot的链表
         /* Partial slab list. */
-        struct list_head node;
+        struct list_head node; // partial中表示自身的节点
 
-        int order;
-        unsigned short total_free_cnt; /* MAX: 65536 */
+        int order; // cur slab's size fo mem, slot's sz == 2^order
+        // 总的空闲块数 & 当前空闲块数
+        unsigned short total_free_cnt; /* MAX: 65536 */ // 2^17 / 2^5 == 2^12 2^16
         unsigned short current_free_cnt;
 };
 
@@ -42,6 +45,8 @@ struct slab_slot_list {
         void *next_free;
 };
 
+// 即Chcore中表示slab池的数据结构，这个也可以在下面对 slab_pool 的定义中看见。
+// 其数据成员即我们之前介绍的current和partial指针，在这里以 slab_header 和 list_head 的形式出现
 struct slab_pointer {
         struct slab_header *current_slab;
         struct list_head partial_slab_list;

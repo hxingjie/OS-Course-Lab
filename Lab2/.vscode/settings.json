@@ -2,5 +2,11 @@
     "clangd.arguments": [
         "--compile-commands-dir=build/kernel"
     ],
-    "debug.allowBreakpointsEverywhere": true
+    "debug.allowBreakpointsEverywhere": true,
+    "files.associations": {
+        "util.h": "c",
+        "buddy.h": "c",
+        "slab.h": "c",
+        "list.h": "c"
+    }
 }

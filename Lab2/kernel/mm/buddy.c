@@ -54,7 +54,73 @@ __maybe_unused static struct page *split_chunk(struct phys_mem_pool *__maybe_unu
          * a suitable free list.
          */
         /* BLANK BEGIN */
-        return NULL;
+
+        struct page *buddy_chunk;
+        struct list_head *free_list;
+
+        /*
+         * If the @chunk's order equals to the required order,
+         * return this chunk.
+         */
+        if (chunk->order == order)
+                return chunk;
+
+        /*
+         * If the current order is larger than the required order,
+         * split the memory chunck into two halves.
+         */
+        chunk->order -= 1;
+
+        buddy_chunk = get_buddy_chunk(pool, chunk);
+        /* The buddy_chunk must exist since we are spliting a large chunk. */
+        if (buddy_chunk == NULL) {
+                BUG("buddy_chunk must exist");
+                return NULL;
+        }
+
+        /* Set the metadata of the remaining buddy_chunk. */
+        buddy_chunk->order = chunk->order;
+        buddy_chunk->allocated = 0;
+
+        /* Put the remaining buddy_chunk into its correspondint free list. */
+        free_list = &(pool->free_lists[buddy_chunk->order].free_list);
+        list_add(&buddy_chunk->node, free_list);
+        pool->free_lists[buddy_chunk->order].nr_free += 1;
+
+        /* Continue to split current chunk (@chunk). */
+        return split_chunk(pool, order, chunk);
+
+        /*
+        pool: chunk属于的内存区域
+        order: 所需要的order
+        chunk: 自由chunk，即不属于任何freelist，并且allocated字段已经为1
+        */
+        
+        // if (chunk->order == order) { // 已经是所需等级的chunk了
+        //     return chunk;
+        // }
+
+        // // 需要分裂
+        // chunk->order -= 1;
+
+        // struct page* buddy_chunk = get_buddy_chunk(pool, chunk);
+        // if (buddy_chunk == NULL) {
+        //     BUG("buddy chunk no exist");
+        //     return NULL;
+        // }
+
+        // // 初始化字段
+        // buddy_chunk->allocated = 0;
+        // buddy_chunk->order = chunk->order;
+        // buddy_chunk->node.prev = NULL;
+        // buddy_chunk->node.next = NULL;
+        // buddy_chunk->pool = pool;
+
+        // // 更新对应freelist
+        // list_add(&buddy_chunk->node, &(pool->free_lists[buddy_chunk->order].free_list));
+        // pool->free_lists[buddy_chunk->order].nr_free += 1;
+
+        // return split_chunk(pool, order, chunk);
 
         /* BLANK END */
         /* LAB 2 TODO 1 END */
@@ -71,7 +137,74 @@ __maybe_unused static struct page * merge_chunk(struct phys_mem_pool *__maybe_un
          * if possible.
          */
         /* BLANK BEGIN */
-        return NULL;
+
+        /*
+        input:
+            pool: chunk属于的内存区域
+            chunk: 自由chunk，即不属于任何freelist，并且allocated字段已经为0
+        output:
+            chunk: order+1的chunk
+        */
+
+        struct page *buddy_chunk;
+
+        /* The @chunk has already been the largest one. */
+        if (chunk->order == (BUDDY_MAX_ORDER - 1)) {
+                return chunk;
+        }
+
+        /* Locate the buddy_chunk of @chunk. */
+        buddy_chunk = get_buddy_chunk(pool, chunk);
+
+        /* If the buddy_chunk does not exist, no further merge is required. */
+        if (buddy_chunk == NULL)
+                return chunk;
+
+        /* The buddy_chunk is not free, no further merge is required. */
+        if (buddy_chunk->allocated == 1)
+                return chunk;
+
+        /* The buddy_chunk is not free as a whole, no further merge is required.
+         */
+        if (buddy_chunk->order != chunk->order)
+                return chunk;
+
+        /* Remove the buddy_chunk from its current free list. */
+        list_del(&(buddy_chunk->node));
+        pool->free_lists[buddy_chunk->order].nr_free -= 1;
+
+        /* Merge the two buddies and get a larger chunk @chunk (order+1). */
+        buddy_chunk->order += 1;
+        chunk->order += 1;
+        if (chunk > buddy_chunk)
+                chunk = buddy_chunk;
+
+        /* Keeping merging. */
+        return merge_chunk(pool, chunk);
+
+        // if (chunk->order == BUDDY_MAX_ORDER-1) {
+        //     return chunk;
+        // }
+
+        // struct page* buddy_chunk = get_buddy_chunk(pool, chunk);
+        // if (buddy_chunk == NULL) { // buddy_chunk already split
+        //     return chunk;
+        // }
+        // if (buddy_chunk->allocated == 1) { // buddy_chunk has allocated
+        //     return chunk;
+        // }
+        // if (buddy_chunk->order != chunk->order) { // buddy_chunk already split
+        //     return chunk;
+        // }
+
+        // list_del(&(buddy_chunk->node)); // 摘出buddy_chunk对应的node
+        // chunk->order += 1;
+        // buddy_chunk->order += 1;
+        // if (chunk > buddy_chunk) { // 应该取较小的
+        //     chunk = buddy_chunk;
+        // }
+
+        // return merge_chunk(pool, chunk);
 
         /* BLANK END */
         /* LAB 2 TODO 1 END */
@@ -84,6 +217,8 @@ __maybe_unused static struct page * merge_chunk(struct phys_mem_pool *__maybe_un
  *
  * The usable memory: [pool_start_addr, pool_start_addr + pool_mem_size).
  */
+// mm.c: struct phys_mem_pool global_mem[N_PHYS_MEM_POOLS];
+// pool -> global_mem
 void init_buddy(struct phys_mem_pool *pool, struct page *start_page,
                 vaddr_t start_addr, unsigned long page_num)
 {
@@ -131,9 +266,9 @@ struct page *buddy_get_pages(struct phys_mem_pool *pool, int order)
         struct page *page = NULL;
 
         if (unlikely(order >= BUDDY_MAX_ORDER)) {
-                kwarn("ChCore does not support allocating such too large "
-                      "continuous physical memory\n");
-                return NULL;
+            kwarn("ChCore does not support allocating such too large "
+                    "continuous physical memory\n");
+            return NULL;
         }
 
         lock(&pool->buddy_lock);
@@ -144,8 +279,55 @@ struct page *buddy_get_pages(struct phys_mem_pool *pool, int order)
          * in the free lists, then split it if necessary.
          */
         /* BLANK BEGIN */
-        UNUSED(cur_order);
-        UNUSED(free_list);
+
+        /* Search a chunk (with just enough size) in the free lists. */
+        for (cur_order = order; cur_order < BUDDY_MAX_ORDER; ++cur_order) {
+                free_list = &(pool->free_lists[cur_order].free_list);
+                if (!list_empty(free_list)) {
+                        /* Get a free memory chunck from the free list */
+                        page = list_entry(free_list->next, struct page, node);
+                        list_del(&page->node);
+                        pool->free_lists[cur_order].nr_free -= 1;
+                        page->allocated = 1;
+                        break;
+                }
+        }
+
+        if (unlikely(page == NULL)) {
+                kdebug("[OOM] No enough memory in memory pool %p\n", pool);
+                goto out;
+        }
+
+        /*
+         * Split the chunk found and return the start part of the chunck
+         * which can meet the required size.
+         */
+        page = split_chunk(pool, order, page);
+
+        // for (cur_order = order; cur_order < BUDDY_MAX_ORDER; cur_order += 1) {
+        //     free_list = &(pool->free_lists[cur_order].free_list);
+        //     if (! list_empty(free_list)) {
+        //         // 使用 list_entry宏
+        //         page = list_entry(free_list->next, struct page, node);
+
+        //         // 摘出该node
+        //         list_del(&page->node);
+        //         pool->free_lists[cur_order].nr_free -= 1;
+
+        //         // init page
+        //         page->allocated = 1;
+        //         page->order = cur_order;
+        //         page->pool = pool;
+        //         break;
+        //     }
+        // }
+
+        // if (unlikely(page == NULL)) {
+        //     kdebug("[OOM] No enough memory in memory pool %p\n", pool);
+        //     goto out;
+        // }
+
+        // page = split_chunk(pool, order, page);
 
         /* BLANK END */
         /* LAB 2 TODO 1 END */
@@ -166,8 +348,27 @@ void buddy_free_pages(struct phys_mem_pool *pool, struct page *page)
          * a suitable free list.
          */
         /* BLANK BEGIN */
-        UNUSED(free_list);
-        UNUSED(order);
+
+        BUG_ON(page->allocated == 0);
+        /* Mark the chunk @page as free. */
+        page->allocated = 0;
+        /* Merge the freed chunk. */
+        page = merge_chunk(pool, page);
+
+        /* Put the merged chunk into the its corresponding free list. */
+        order = page->order;
+        free_list = &(pool->free_lists[order].free_list);
+        list_add(&page->node, free_list);
+        pool->free_lists[order].nr_free += 1;
+
+        // BUG_ON(page->allocated == 0);
+
+        // page->allocated = 0;
+        // struct page* chunk = merge_chunk(pool, page);
+
+        // list_add(&chunk->node, &(pool->free_lists[chunk->order].free_list));
+        // pool->free_lists[chunk->order].nr_free += 1;
+        
         /* BLANK END */
         /* LAB 2 TODO 1 END */
 
